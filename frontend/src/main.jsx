@@ -803,13 +803,30 @@ function HistoryPage() {
 
   useEffect(() => {
     if (!device) return;
-    // A API agrupa as leituras (1/s) em intervalos para o gráfico caber no período escolhido.
     const days = Number.parseInt(range, 10);
     const bucketMinutes = days <= 7 ? 10 : days <= 30 ? 60 : 180;
-    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    fetchJson(`/devices/${encodeURIComponent(device)}/telemetry?bucket_minutes=${bucketMinutes}&start=${encodeURIComponent(start)}&limit=5000`)
-      .then(setEvents)
-      .catch(() => setEvents([]));
+    let active = true;
+    let loading = false;
+    const load = async () => {
+      if (loading) return;
+      loading = true;
+      const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      try {
+        const latestEvents = await fetchJson(`/devices/${encodeURIComponent(device)}/telemetry?bucket_minutes=${bucketMinutes}&start=${encodeURIComponent(start)}&limit=5000`);
+        if (active) setEvents(latestEvents);
+      } catch {
+        // Mantém os dados exibidos até a próxima tentativa.
+      } finally {
+        loading = false;
+      }
+    };
+
+    load();
+    const interval = window.setInterval(load, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, [device, range]);
 
   const selected = useMemo(() => {
@@ -1001,29 +1018,26 @@ function ReportsPage() {
   const { motors } = useTelemetry();
   const [motorId, setMotorId] = useState('all');
   const [period, setPeriod] = useState('24h');
-  const [events, setEvents] = useState([]);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (motorId === 'all' && motors[0]) setMotorId(motors[0].id);
   }, [motors, motorId]);
 
-  useEffect(() => {
+  const exportCsv = async () => {
     if (!motorId || motorId === 'all') {
-      setEvents([]);
+      setMessage('Selecione um motor para exportar.');
       return;
     }
-    fetchJson(`/devices/${encodeURIComponent(motorId)}/telemetry?limit=5000`)
-      .then(setEvents)
-      .catch(() => setEvents([]));
-  }, [motorId]);
-
-  const reportEvents = useMemo(() => {
-    const cutoff = Date.now() - Number.parseInt(period, 10) * 60 * 60 * 1000;
-    return events.filter((event) => new Date(event.captured_at).getTime() >= cutoff);
-  }, [events, period]);
-
-  const exportCsv = () => {
+    let reportEvents;
+    try {
+      const events = await fetchJson(`/devices/${encodeURIComponent(motorId)}/telemetry?limit=5000`);
+      const cutoff = Date.now() - Number.parseInt(period, 10) * 60 * 60 * 1000;
+      reportEvents = events.filter((event) => new Date(event.captured_at).getTime() >= cutoff);
+    } catch {
+      setMessage('Não foi possível carregar os dados para exportação.');
+      return;
+    }
     const rows = reportEvents.map((event) => {
       const metrics = Object.fromEntries(event.metrics.map((item) => [item.name, item.value]));
       return [event.captured_at, metrics.rpm ?? '', metrics.vibration_g ?? '', metrics.temperature_c ?? ''];
