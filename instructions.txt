@@ -1,0 +1,174 @@
+estamos fazendo um projeto de um sensor de vibraçao, temperatura, RPM para motores industriais
+o objetivo deste projeto é identificar erros ou possiveis falhas no motor antes de que elas ocorram
+para isso iremos utilizar um monitoramento constante que salve dados em um banco de dados 
+My sql estes dados então serão enviados para uma IA preditiva que via gerar uma previsão com 
+base em possiveis falhas com os resultados obtidos e com o manual de operação do motor.antes
+
+o codigo do sensor esta representado em CodigoProjetoESP32.ino quando precisar saber como vai funcionar
+a api do sensor consulte este aquivo, é importante que NAO altere este arquivo pois ja esta decidido 
+que esta é a forma final dele.
+
+Spec de Frontend — Portal do Cliente MotorSolutions
+1. Contexto do produto
+
+Portal onde clientes da MotorSolutions monitoram, em tempo real, motores industriais equipados com sensores ESP32 (vibração, temperatura, rotação/RPM). Stack: React. Paleta oficial:
+
+css
+--primary-color: #1E3664;
+--secondary-color: #00b4fc;
+--purple: #c882ff;
+--teal: #9deef1;
+--white: #FFFFFF;
+--button: #0061fe;
+2. Fluxo geral
+Login (/login) — e-mail e senha, autenticação real (JWT/sessão).
+Após autenticar → redireciona para Dashboard (/dashboard), tela principal com sidebar fixa.
+Todas as páginas internas vivem dentro de um layout autenticado (sidebar + topbar + área de conteúdo).
+3. Navegação — Sidebar (desktop) / Menu hambúrguer (mobile)
+Desktop (≥ 1024px)
+Sidebar fixa à esquerda, sempre visível, não sobrepõe o conteúdo.
+Largura ~240–280px, colapsável para modo "ícone apenas" (~72px) com toggle.
+Item ativo destacado com o --secondary-color (borda ou fundo sutil).
+Rodapé da sidebar: avatar do usuário, nome, empresa, atalho para logout.
+Mobile (< 1024px)
+Sidebar vira drawer/off-canvas, acionado por ícone hambúrguer na topbar.
+Overlay escurecido atrás do drawer; fecha ao tocar fora ou ao navegar.
+Topbar fixa no topo com: hambúrguer, logo/nome, sino de notificações.
+Itens do menu
+Dashboard (visão geral)
+Motores (lista de motores monitorados)
+Histórico (gráficos de vibração/temperatura/rotação ao longo do tempo)
+Alertas (notificações de anomalias)
+Relatórios (exportação em PDF/Excel)
+Usuários (gestão de múltiplos usuários da empresa — visível só para perfil admin/gestor)
+Configurações (perfil/conta)
+4. Páginas — o que cada uma precisa
+
+Dashboard (visão geral)
+
+Cards-resumo: total de motores, motores em alerta, motores saudáveis.
+Preview rápido dos motores com status mais crítico.
+Indicador visual de conexão em tempo real (dado ao vivo vs. última atualização).
+
+Motores (lista)
+
+Lista/grid de motores com nome, localização/setor, status (ok/atenção/ crítico) e última leitura.
+Busca e filtro por status.
+Clique abre o detalhe do motor.
+
+Detalhe de um motor
+
+Leituras atuais em destaque (RPM, vibração, temperatura) — atualizando via WebSocket.
+Gráfico histórico com seletor de período (24h / 7 dias / 30 dias).
+Linha do tempo de alertas daquele motor específico.
+
+Alertas
+
+Lista cronológica de anomalias (motor, tipo, severidade, horário).
+Filtro por severidade e por motor.
+Marcar como lido/resolvido.
+
+Relatórios
+
+Seleção de motor(es) + período.
+Exportação em PDF e Excel.
+Histórico de relatórios já gerados.
+
+Usuários (admin/gestor)
+
+Lista de usuários da empresa com papel/permissão.
+Convidar novo usuário, editar permissão, remover acesso.
+
+Configurações
+
+Dados da conta/empresa, troca de senha, preferências de notificação.
+5. Tempo real
+Dados de RPM, vibração e temperatura chegam via WebSocket (fallback em polling se a conexão cair).
+Front deve tratar 3 estados de conexão: ao vivo, reconectando, offline (mostrar isso de forma visível, sem alarmar à toa).
+Definir contrato de payload esperado do backend, ex.:
+json
+{
+  "motor_id": "string",
+  "timestamp": "ISO8601",
+  "rpm": 1842,
+  "vibration_g": 0.42,
+  "temperature_c": 61
+}
+6. Estados que toda página precisa cobrir
+Loading (skeleton, não apenas spinner genérico).
+Vazio (ex: nenhum motor cadastrado ainda, nenhum alerta).
+Erro (falha ao carregar dados, com opção de tentar de novo).
+Sem permissão (usuário sem papel de admin tentando acessar Usuários).
+7. Responsividade
+Breakpoints sugeridos: mobile (<640px), tablet (640–1024px), desktop (≥1024px).
+Gráficos e tabelas precisam de versão compacta no mobile (não só encolher a mesma tabela — repensar como cards em telas pequenas).
+8. Acessibilidade
+Contraste adequado (a paleta escura precisa de texto claro o bastante).
+Navegação da sidebar/drawer por teclado, aria-label nos ícones.
+Estados de foco visíveis em todos os elementos interativos.
+9. Autenticação/sessão
+Rotas internas protegidas — redireciona pro login se sessão expirar.
+Expiração de sessão avisada ao usuário antes de derrubá-lo (não silenciosa).
+Logout limpa sessão e fecha conexão WebSocket.
+10. Fora de escopo por enquanto
+Definição final do banco (MySQL, hospedagem na nuvem) — em aberto.
+App mobile nativo — só web responsiva por ora.
+
+banco de dados esta em database/schema.sql; a API FastAPI cria as mesmas tabelas ao iniciar.
+
+ESP32 + sensores
+       │
+       │ HTTP POST
+       ▼
+┌─────────────────────┐
+│   BACKEND LOCAL     │
+│   Node.js + Express │
+└─────────┬───────────┘
+          │
+          │ INSERT
+          ▼
+┌─────────────────────┐
+│       MySQL         │
+│      leituras       │
+└─────────┬───────────┘
+          │
+          ├──────────────► Dashboard
+          │
+          └──────────────► IA preditiva
+
+___________________________________________________________________________________
+
+                    ┌─────────────────┐
+                    │      ESP32       │
+                    │                 │
+                    │ DS18B20         │
+                    │ MMA8452         │
+                    │ KY-003          │
+                    └────────┬────────┘
+                             │
+                         HTTP/JSON
+                             │
+                             ▼
+                  ┌─────────────────────┐
+                  │       BACKEND       │
+                  │                     │
+                  │ Express             │
+                  │ Validação           │
+                  │ API                 │
+                  └─────────┬───────────┘
+                            │
+                            ▼
+                  ┌─────────────────────┐
+                  │        MySQL        │
+                  │                     │
+                  │ leituras            │
+                  └───────┬───────┬─────┘
+                          │       │
+                    ┌─────┘       └─────┐
+                    ▼                   ▼
+             ┌─────────────┐     ┌─────────────┐
+             │  Dashboard  │     │      IA     │
+             │  Frontend   │     │ Preditiva   │
+             └─────────────┘     └─────────────┘
+___________________________________________________________________________________
+
